@@ -283,7 +283,10 @@ static int of_thermal_bind(struct thermal_zone_device *thermal,
 				unsigned long max_level = 0, level = 0;
 
 				cdev->ops->get_max_state(cdev, &max_level);
-				level = cdev->ops->get_cooling_level(cdev, tbp->value);
+				if (tbp->value == 0)
+					level = 0;
+				else
+					level = cdev->ops->get_cooling_level(cdev, tbp->value);
 
 				if (level == THERMAL_CSTATE_INVALID)
 					level = max_level;

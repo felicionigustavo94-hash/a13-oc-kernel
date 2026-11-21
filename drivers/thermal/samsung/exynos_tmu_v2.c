@@ -1619,6 +1619,15 @@ static int exynos_tmu_parse_ect(struct exynos_tmu_data *data)
 		for (i = 0; i < function->num_of_range; ++i) {
 			temperature = function->range_list[i].lower_bound_temperature;
 			freq = function->range_list[i].max_frequency;
+			if (i == 0 && temperature <= 25) {
+				freq = 0;
+			} else if (temperature > 25 && temperature < 105) {
+				int delta = (110 - temperature) / 3;
+
+				if (delta < 4)
+					delta = 4;
+				temperature = min(temperature + delta, 105);
+			}
 			__tz->trips[i].temperature = temperature  * MCELSIUS;
 			__tz->tbps[i].value = freq;
 
@@ -1632,7 +1641,7 @@ static int exynos_tmu_parse_ect(struct exynos_tmu_data *data)
 					data->hotplug_out_threshold = temperature;
 
 					if (i)
-						data->hotplug_in_threshold = function->range_list[i-1].lower_bound_temperature;
+						data->hotplug_in_threshold = __tz->trips[i - 1].temperature / MCELSIUS;
 
 					pr_info("[ECT]hotplug_threshold : %d\n", hotplug_threshold_temp);
 					pr_info("[ECT]hotplug_in_threshold : %d\n", data->hotplug_in_threshold);
