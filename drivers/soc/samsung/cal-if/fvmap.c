@@ -689,10 +689,10 @@ static void fvmap_copy_from_sram(void __iomem *map_base, void __iomem *sram_base
 
 		/*
 		 * Symmetric OC-Max for Exynos 850 (SM-A135M/F):
-		 * Both CPUCL0 (i==2) and CPUCL1 (i==3) get:
-		 *   lv=0: 2600000 kHz @ 1400000 uV (unlocked, disabled at boot)
-		 *   lv=1: 2392000 kHz @ 1350000 uV (unlocked, disabled at boot)
-		 *   lv=2: 2314000 kHz @ 1325000 uV (default boot max)
+		 * Both CPUCL0 (i==2) and CPUCL1 (i==3) get raised voltages above 2.21 GHz:
+		 *   lv=0: 2600000 kHz @ 1425000 uV (unlocked, disabled at boot)
+		 *   lv=1: 2392000 kHz @ 1375000 uV (unlocked, disabled at boot)
+		 *   lv=2: 2314000 kHz @ 1350000 uV (default boot max on CPUCL1)
 		 *   lv=3..6: preserved S=0 steps (2210, 2002, 1742, 1586 MHz)
 		 */
 		if ((i == 2 || i == 3) && fvmap_header[i].num_of_lv >= 8 &&
@@ -718,11 +718,11 @@ static void fvmap_copy_from_sram(void __iomem *map_base, void __iomem *sram_base
 				plls->pms[6] = orig_pms[5]; /* 1586 MHz */
 			}
 			old->table[0].rate = 2600000;
-			old->table[0].volt = 1400000;
+			old->table[0].volt = 1425000;
 			old->table[1].rate = 2392000;
-			old->table[1].volt = 1350000;
+			old->table[1].volt = 1375000;
 			old->table[2].rate = 2314000;
-			old->table[2].volt = 1325000;
+			old->table[2].volt = 1350000;
 			old->table[3].rate = orig_rate[0];
 			old->table[3].volt = orig_volt[0];
 			old->table[4].rate = orig_rate[2];
@@ -740,7 +740,7 @@ static void fvmap_copy_from_sram(void __iomem *map_base, void __iomem *sram_base
 				vclk->lut[5].rate = orig_rate[4];
 				vclk->lut[6].rate = orig_rate[5];
 			}
-			pr_info("OC-Max: domain %d configured (2600@1.40V, 2392@1.35V, 2314@1.325V)\n", i);
+			pr_info("OC-Max: domain %d configured (2600@1.425V, 2392@1.375V, 2314@1.350V)\n", i);
 		}
 
 		check_percent_margin(old, fvmap_header[i].num_of_lv);

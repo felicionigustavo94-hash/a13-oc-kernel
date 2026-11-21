@@ -1253,8 +1253,10 @@ static int cpufreq_online(unsigned int cpu)
 	cpumask_and(policy->cpus, policy->cpus, cpu_online_mask);
 
 	if (new_policy) {
-		if (policy->max > 2314000)
-			policy->max = 2314000;
+		unsigned int boot_max = (policy->cpu < 4) ? 2210000 : 2314000;
+
+		if (policy->max > boot_max)
+			policy->max = boot_max;
 		policy->user_policy.min = policy->min;
 		policy->user_policy.max = policy->max;
 
