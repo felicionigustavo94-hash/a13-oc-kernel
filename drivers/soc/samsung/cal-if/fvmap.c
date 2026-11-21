@@ -688,29 +688,28 @@ static void fvmap_copy_from_sram(void __iomem *map_base, void __iomem *sram_base
 		new = map_base + fvmap_header[i].o_ratevolt;
 
 		/*
-		 * Asymmetric OC-Max for Exynos 850 (SM-A135M/F):
-		 * Keep CPUCL0 (cores 0-3) at 2.21 GHz @ 1.26875V and unlock
-		 * CPUCL1 (cores 4-7) lv=0 to 2.392 GHz (~2.4 GHz) @ 1.300V,
-		 * moving 2.21 GHz to lv=1.
+		 * Symmetric OC-Max for Exynos 850 (SM-A135M/F):
+		 * Unlock both CPUCL0 (cores 0-3, i==2) and CPUCL1 (cores 4-7, i==3)
+		 * lv=0 to 2.314 GHz @ 1.300V, moving 2.21 GHz @ 1.26875V to lv=1.
 		 */
-		if (i == 3 && fvmap_header[i].num_of_lv >= 3 &&
+		if ((i == 2 || i == 3) && fvmap_header[i].num_of_lv >= 3 &&
 		    fvmap_header[i].num_of_pll >= 1 &&
 		    old->table[0].rate == 2210000) {
 			clks = sram_base + fvmap_header[i].o_members;
 			plls = sram_base + clks->addr[0];
 			if (plls->level >= 2) {
 				plls->pms[1] = plls->pms[0];
-				plls->pms[0] = 0x01140300; /* 26*276/3 = 2392 MHz */
+				plls->pms[0] = 0x010b0300; /* 26*267/3 = 2314 MHz */
 			}
 			old->table[1].rate = old->table[0].rate;
 			old->table[1].volt = old->table[0].volt;
-			old->table[0].rate = 2392000;
+			old->table[0].rate = 2314000;
 			old->table[0].volt = 1300000;
 			if (vclk->lut && vclk->num_rates >= 2) {
 				vclk->lut[1].rate = vclk->lut[0].rate;
-				vclk->lut[0].rate = 2392000;
+				vclk->lut[0].rate = 2314000;
 			}
-			pr_info("OC-Max: CPUCL1 unlocked to 2392000 kHz @ 1300000 uV\n");
+			pr_info("OC-Max: domain %d unlocked to 2314000 kHz @ 1300000 uV\n", i);
 		}
 
 		check_percent_margin(old, fvmap_header[i].num_of_lv);
