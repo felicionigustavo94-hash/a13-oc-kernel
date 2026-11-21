@@ -11,6 +11,7 @@
 #include "cmucal.h"
 #include "vclk.h"
 #include "ra.h"
+#include "acpm_dvfs.h"
 
 #define FVMAP_SIZE		(SZ_8K)
 #define STEP_UV			(6250)
@@ -481,6 +482,136 @@ static ssize_t store_fvmap_table(struct kobject *kobj,
 static struct kobj_attribute fvmap_table_attr =
 __ATTR(fvmap_table, 0600, show_fvmap_table, store_fvmap_table);
 
+static ssize_t show_fvmap_pll(struct kobject *kobj,
+			      struct kobj_attribute *attr, char *buf)
+{
+	struct fvmap_header *hdr = sram_fvmap_base;
+	struct clocks *clks;
+	struct pll_header *plls;
+	struct dvfs_table *tbl;
+	struct vclk *vclk;
+	int size, i, j, k;
+	ssize_t len = 0;
+
+	if (!sram_fvmap_base)
+		return -ENODEV;
+
+	size = cmucal_get_list_size(ACPM_VCLK_TYPE);
+	for (i = 2; i <= 4 && i < size; i++) {
+		vclk = cmucal_get_node(ACPM_VCLK_TYPE | i);
+		if (!vclk)
+			continue;
+
+		len += scnprintf(buf + len, PAGE_SIZE - len,
+				 "[%d] %s lv=%u mem=%u pll=%u o_mem=0x%x o_rv=0x%x o_tbl=0x%x\n",
+				 i, vclk->name, hdr[i].num_of_lv,
+				 hdr[i].num_of_members, hdr[i].num_of_pll,
+				 hdr[i].o_members, hdr[i].o_ratevolt, hdr[i].o_tables);
+
+		clks = sram_fvmap_base + hdr[i].o_members;
+		for (j = 0; j < hdr[i].num_of_pll; j++) {
+			plls = sram_fvmap_base + clks->addr[j];
+			len += scnprintf(buf + len, PAGE_SIZE - len,
+					 "  pll%d addr=0x%x lock=0x%x lv=%u:",
+					 j, plls->addr, plls->o_lock, plls->level);
+			for (k = 0; k < plls->level && k < 20; k++) {
+				len += scnprintf(buf + len, PAGE_SIZE - len,
+						 " %08x", plls->pms[k]);
+				if (len >= PAGE_SIZE - 48)
+					break;
+			}
+			len += scnprintf(buf + len, PAGE_SIZE - len, "\n");
+		}
+
+		tbl = sram_fvmap_base + hdr[i].o_tables;
+		for (k = 0; k < hdr[i].num_of_lv && k < 4; k++) {
+			len += scnprintf(buf + len, PAGE_SIZE - len, "  tbl[%d]:", k);
+			for (j = 0; j < hdr[i].num_of_members; j++) {
+				len += scnprintf(buf + len, PAGE_SIZE - len,
+						 " %02x",
+						 tbl->val[k * hdr[i].num_of_members + j]);
+			}
+			len += scnprintf(buf + len, PAGE_SIZE - len, "\n");
+			if (len >= PAGE_SIZE - 64)
+				break;
+		}
+		if (len >= PAGE_SIZE - 64)
+			break;
+	}
+
+	return len;
+}
+
+static ssize_t store_fvmap_pll(struct kobject *kobj,
+			       struct kobj_attribute *attr,
+			       const char *buf, size_t count)
+{
+	struct fvmap_header *hdr = sram_fvmap_base;
+	struct clocks *clks;
+	struct pll_header *plls;
+	int dom_idx, pll_idx, lv, size;
+	unsigned int pms_val;
+
+	if (!sram_fvmap_base)
+		return -ENODEV;
+
+	if (sscanf(buf, "%d %d %d %x", &dom_idx, &pll_idx, &lv, &pms_val) != 4)
+		return -EINVAL;
+
+	size = cmucal_get_list_size(ACPM_VCLK_TYPE);
+	if (dom_idx < 0 || dom_idx >= size)
+		return -EINVAL;
+
+	if (pll_idx < 0 || pll_idx >= hdr[dom_idx].num_of_pll)
+		return -EINVAL;
+
+	clks = sram_fvmap_base + hdr[dom_idx].o_members;
+	plls = sram_fvmap_base + clks->addr[pll_idx];
+
+	if (lv < 0 || lv >= plls->level)
+		return -EINVAL;
+
+	plls->pms[lv] = pms_val;
+	return count;
+}
+
+static struct kobj_attribute fvmap_pll_attr =
+__ATTR(fvmap_pll, 0600, show_fvmap_pll, store_fvmap_pll);
+
+static ssize_t show_acpm_rate(struct kobject *kobj,
+			      struct kobj_attribute *attr, char *buf)
+{
+	return scnprintf(buf, PAGE_SIZE,
+			 "CPUCL0=%lu CPUCL1=%lu G3D=%lu\n",
+			 exynos_acpm_get_rate(2),
+			 exynos_acpm_get_rate(3),
+			 exynos_acpm_get_rate(4));
+}
+
+static ssize_t store_acpm_rate(struct kobject *kobj,
+			       struct kobj_attribute *attr,
+			       const char *buf, size_t count)
+{
+	unsigned int dom_idx;
+	unsigned long rate_khz;
+	int ret;
+
+	if (sscanf(buf, "%u %lu", &dom_idx, &rate_khz) != 2)
+		return -EINVAL;
+
+	if (dom_idx > 8 || rate_khz < 50000 || rate_khz > 2500000)
+		return -EINVAL;
+
+	ret = exynos_acpm_set_rate(dom_idx, rate_khz);
+	if (ret)
+		return ret;
+
+	return count;
+}
+
+static struct kobj_attribute acpm_rate_attr =
+__ATTR(acpm_rate, 0600, show_acpm_rate, store_acpm_rate);
+
 static struct attribute *percent_margin_attrs[] = {
 	&mif_margin_percent.attr,
 	&int_margin_percent.attr,
@@ -499,6 +630,8 @@ static struct attribute *percent_margin_attrs[] = {
 	&npu_margin_percent.attr,
 	&mfc_margin_percent.attr,
 	&fvmap_table_attr.attr,
+	&fvmap_pll_attr.attr,
+	&acpm_rate_attr.attr,
 	NULL,
 };
 
