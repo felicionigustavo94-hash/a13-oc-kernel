@@ -18,19 +18,23 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            bc bison build-essential cpio flex libelf-dev libssl-dev \
+            bc bison build-essential cpio curl flex libelf-dev libssl-dev \
             libncurses5-dev python-is-python3 python2 python3 zip unzip \
             gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu
 
       - name: Build kernel & AnyKernel3 zip
         run: |
+          mkdir -p out
           chmod +x build_kernel.sh
-          bash build_kernel.sh
+          set -o pipefail
+          bash build_kernel.sh 2>&1 | tee out/build.log
 
       - name: Upload flashable AnyKernel3 zip
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: physwizz-A135-OC-Max
           path: |
             out/physwizz-A135-OC-Max.zip
             out/exynos3830.dtb
+            out/build.log
