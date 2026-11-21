@@ -689,27 +689,58 @@ static void fvmap_copy_from_sram(void __iomem *map_base, void __iomem *sram_base
 
 		/*
 		 * Symmetric OC-Max for Exynos 850 (SM-A135M/F):
-		 * Unlock both CPUCL0 (cores 0-3, i==2) and CPUCL1 (cores 4-7, i==3)
-		 * lv=0 to 2.314 GHz @ 1.300V, moving 2.21 GHz @ 1.26875V to lv=1.
+		 * Both CPUCL0 (i==2) and CPUCL1 (i==3) get:
+		 *   lv=0: 2600000 kHz @ 1400000 uV (unlocked, disabled at boot)
+		 *   lv=1: 2392000 kHz @ 1350000 uV (unlocked, disabled at boot)
+		 *   lv=2: 2314000 kHz @ 1325000 uV (default boot max)
+		 *   lv=3..6: preserved S=0 steps (2210, 2002, 1742, 1586 MHz)
 		 */
-		if ((i == 2 || i == 3) && fvmap_header[i].num_of_lv >= 3 &&
+		if ((i == 2 || i == 3) && fvmap_header[i].num_of_lv >= 8 &&
 		    fvmap_header[i].num_of_pll >= 1 &&
 		    old->table[0].rate == 2210000) {
+			unsigned int orig_rate[7], orig_volt[7], orig_pms[7];
+			int k;
+
 			clks = sram_base + fvmap_header[i].o_members;
 			plls = sram_base + clks->addr[0];
-			if (plls->level >= 2) {
-				plls->pms[1] = plls->pms[0];
-				plls->pms[0] = 0x010b0300; /* 26*267/3 = 2314 MHz */
+			for (k = 0; k < 7; k++) {
+				orig_rate[k] = old->table[k].rate;
+				orig_volt[k] = old->table[k].volt;
+				orig_pms[k] = (plls->level >= 7) ? plls->pms[k] : 0;
 			}
-			old->table[1].rate = old->table[0].rate;
-			old->table[1].volt = old->table[0].volt;
-			old->table[0].rate = 2314000;
-			old->table[0].volt = 1300000;
-			if (vclk->lut && vclk->num_rates >= 2) {
-				vclk->lut[1].rate = vclk->lut[0].rate;
-				vclk->lut[0].rate = 2314000;
+			if (plls->level >= 7) {
+				plls->pms[0] = 0x012c0300; /* 26*300/3 = 2600 MHz */
+				plls->pms[1] = 0x01140300; /* 26*276/3 = 2392 MHz */
+				plls->pms[2] = 0x010b0300; /* 26*267/3 = 2314 MHz */
+				plls->pms[3] = orig_pms[0]; /* 2210 MHz */
+				plls->pms[4] = orig_pms[2]; /* 2002 MHz */
+				plls->pms[5] = orig_pms[4]; /* 1742 MHz */
+				plls->pms[6] = orig_pms[5]; /* 1586 MHz */
 			}
-			pr_info("OC-Max: domain %d unlocked to 2314000 kHz @ 1300000 uV\n", i);
+			old->table[0].rate = 2600000;
+			old->table[0].volt = 1400000;
+			old->table[1].rate = 2392000;
+			old->table[1].volt = 1350000;
+			old->table[2].rate = 2314000;
+			old->table[2].volt = 1325000;
+			old->table[3].rate = orig_rate[0];
+			old->table[3].volt = orig_volt[0];
+			old->table[4].rate = orig_rate[2];
+			old->table[4].volt = orig_volt[2];
+			old->table[5].rate = orig_rate[4];
+			old->table[5].volt = orig_volt[4];
+			old->table[6].rate = orig_rate[5];
+			old->table[6].volt = orig_volt[5];
+			if (vclk->lut && vclk->num_rates >= 7) {
+				vclk->lut[0].rate = 2600000;
+				vclk->lut[1].rate = 2392000;
+				vclk->lut[2].rate = 2314000;
+				vclk->lut[3].rate = orig_rate[0];
+				vclk->lut[4].rate = orig_rate[2];
+				vclk->lut[5].rate = orig_rate[4];
+				vclk->lut[6].rate = orig_rate[5];
+			}
+			pr_info("OC-Max: domain %d configured (2600@1.40V, 2392@1.35V, 2314@1.325V)\n", i);
 		}
 
 		check_percent_margin(old, fvmap_header[i].num_of_lv);
