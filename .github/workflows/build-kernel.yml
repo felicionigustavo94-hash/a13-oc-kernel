@@ -18,9 +18,17 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            bc bison build-essential cpio curl flex libelf-dev libssl-dev \
+            bc bison build-essential ccache cpio curl flex libelf-dev libssl-dev \
             libncurses5-dev python-is-python3 python2 python3 zip unzip \
             gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu
+
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: ccache-a13-${{ github.run_id }}
+          restore-keys: |
+            ccache-a13-
 
       - name: Build kernel & AnyKernel3 zip
         run: |
