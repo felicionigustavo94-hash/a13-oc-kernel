@@ -1,0 +1,36 @@
+name: Build A135M/A135F OC Max Kernel
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master ]
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            bc bison build-essential cpio flex libelf-dev libssl-dev \
+            libncurses5-dev python-is-python3 python2 python3 zip unzip \
+            gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu
+
+      - name: Build kernel & AnyKernel3 zip
+        run: |
+          chmod +x build_kernel.sh
+          bash build_kernel.sh
+
+      - name: Upload flashable AnyKernel3 zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: physwizz-A135-OC-Max
+          path: |
+            out/physwizz-A135-OC-Max.zip
+            out/exynos3830.dtb
