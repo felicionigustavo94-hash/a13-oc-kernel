@@ -1176,7 +1176,7 @@ static __init void set_boot_qos(struct exynos_cpufreq_domain *domain)
 	 * booting pm_qos is selected to smaller one
 	 * between max frequency of domain and the value defined in device tree.
 	 */
-	boot_qos = domain->max_freq;
+	boot_qos = min(domain->max_freq, (unsigned int)2210000);
 	if (!of_property_read_u32(dn, "pm_qos-booting", &val))
 		boot_qos = min(boot_qos, val);
 
@@ -1300,6 +1300,11 @@ static int init_constraint_table_dt(struct exynos_cpufreq_domain *domain,
 
 		if (freq == CPUFREQ_ENTRY_INVALID)
 			continue;
+
+		if (size >= 2 && freq > table[0].master_freq) {
+			dm->c.freq_table[index].slave_freq = table[0].slave_freq;
+			continue;
+		}
 
 		for (c_index = 0; c_index < size / 2; c_index++) {
 			/* find row same or nearby frequency */
