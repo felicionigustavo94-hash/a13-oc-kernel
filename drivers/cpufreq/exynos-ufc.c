@@ -505,6 +505,8 @@ static void ufc_update_limit(int input_freq, int ctrl_type, int mode)
 		struct pm_qos_request *target_pm_qos = NULL;
 
 		target_freq = target_table_info->ufc_table[col_idx][target_idx];
+		if (ctrl_type == PM_QOS_MAX_LIMIT && target_idx == 0)
+			target_freq = ufc_dom->max_freq;
 		if (ufc_need_adjust_freq(target_freq, ufc_dom))
 			target_freq = ufc_adjust_freq(target_freq, ufc_dom, ctrl_type);
 

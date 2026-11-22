@@ -97,9 +97,9 @@ static int read_interactive_info_array(void)
 
 	/* TODO: change default value to something more sensible */
 	dt_info.interactive_info.highspeed_clock =
-		interactive_info[0] == 0 ? 500 : (u32)interactive_info[0];
+		(u32)interactive_info[0] < 1001000 ? 1001000 : (u32)interactive_info[0];
 	dt_info.interactive_info.highspeed_load =
-		interactive_info[1] == 0 ? 100 : (u32)interactive_info[1];
+		interactive_info[1] == 0 ? 75 : min_t(u32, (u32)interactive_info[1], 75U);
 	dt_info.interactive_info.highspeed_delay =
 		interactive_info[2] == 0 ? 0 : (u32)interactive_info[2];
 
@@ -112,9 +112,10 @@ static int build_clk_table(void)
 	int array_size = dt_rows * dt_info.gpu_dvfs_table_size.col;
 	u32 *raw_table;
 	int row = 0;
-	static const u32 oc_freqs[] = { 1300000, 1196000, 1105000 };
-	static const u32 oc_min_th[] = { 99, 98, 96 };
-	static const u32 oc_max_th[] = { 100, 100, 98 };
+	static const u32 oc_freqs[] = { 1196000, 1105000 };
+	static const u32 oc_min_th[] = { 78, 68 };
+	static const u32 oc_max_th[] = { 100, 84 };
+	static const u32 oc_stay[] = { 3, 2 };
 	int oc_count = 0;
 	int oc_idx;
 	int max_dt_clk = 0;
@@ -150,7 +151,7 @@ static int build_clk_table(void)
 			clock_table[row].clock = oc_freqs[oc_idx];
 			clock_table[row].min_threshold = oc_min_th[oc_idx];
 			clock_table[row].max_threshold = oc_max_th[oc_idx];
-			clock_table[row].down_staycount = 1;
+			clock_table[row].down_staycount = oc_stay[oc_idx];
 			clock_table[row].mem_freq = 0x177bb8;
 			clock_table[row].cpu_little_min_freq = 0x1e8c50;
 			clock_table[row].cpu_big_max_freq = CPU_MAX;
@@ -160,11 +161,25 @@ static int build_clk_table(void)
 
 	for (oc_idx = 0; oc_idx < dt_rows; oc_idx++) {
 		int table_idx = oc_idx * dt_info.gpu_dvfs_table_size.col;
+		u32 min_th = raw_table[table_idx + 1];
+		u32 max_th = raw_table[table_idx + 2];
+		u32 stay = raw_table[table_idx + 3];
+
+		/* Stock ceiling row has max_threshold=100, which blocks > comparison to OC rows. */
+		if (oc_count > 0 && raw_table[table_idx] == (u32)max_dt_clk) {
+			min_th = min_t(u32, min_th, 58U);
+			max_th = min_t(u32, max_th, 76U);
+			stay = max_t(u32, stay, 2U);
+		} else if (oc_count > 0 && max_th > 80U) {
+			max_th = 80U;
+			if (min_th >= max_th)
+				min_th = max_th - 15U;
+		}
 
 		clock_table[row].clock = raw_table[table_idx];
-		clock_table[row].min_threshold = raw_table[table_idx + 1];
-		clock_table[row].max_threshold = raw_table[table_idx + 2];
-		clock_table[row].down_staycount = raw_table[table_idx + 3];
+		clock_table[row].min_threshold = min_th;
+		clock_table[row].max_threshold = max_th;
+		clock_table[row].down_staycount = stay;
 		clock_table[row].mem_freq = raw_table[table_idx + 4];
 		clock_table[row].cpu_little_min_freq = raw_table[table_idx + 5];
 
@@ -184,8 +199,8 @@ static int build_clk_table(void)
 	}
 
 	dt_info.gpu_dvfs_table_size.row = row;
-	if (dt_info.gpu_max_clock < 1300000)
-		dt_info.gpu_max_clock = 1300000;
+	if (dt_info.gpu_max_clock < 1196000)
+		dt_info.gpu_max_clock = 1196000;
 
 	kfree(raw_table);
 
