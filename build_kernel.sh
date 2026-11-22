@@ -9,12 +9,6 @@ export SUBARCH=arm64
 export PLATFORM_VERSION=14
 export ANDROID_MAJOR_VERSION=u
 
-if [ ! -e drivers/kernelsu/Kconfig ]; then
-  rm -rf KernelSU drivers/kernelsu
-  git clone --depth=1 https://github.com/rsuntk/KernelSU.git KernelSU
-  ln -sf ../KernelSU/kernel drivers/kernelsu
-fi
-
 CLANG_BIN="$ROOT_DIR/toolchain/clang/host/linux-x86/clang-r383902/bin"
 export PATH="$CLANG_BIN:$PATH"
 
@@ -47,6 +41,7 @@ MAKE_ARGS=(
 )
 
 make "${MAKE_ARGS[@]}" physwizz_defconfig
+sed -i '/CONFIG_KSU/d' .config
 make "${MAKE_ARGS[@]}" -j"$(nproc)" Image dtbs
 
 if command -v ccache >/dev/null 2>&1; then
