@@ -366,11 +366,15 @@ static int gpu_dvfs_governor_booster(int utilization)
 
 	if ((dvfs->step >= dvfs_table_lock + 2) && ((cur_weight - weight) > booster_threshold)) {
 		dvfs->step -= 2;
+		if (dvfs->table[dvfs->step].clock > gpex_clock_get_max_clock_limit())
+			dvfs->step = gpex_clock_get_table_idx(gpex_clock_get_max_clock_limit());
 		dvfs->down_requirement = dvfs->table[dvfs->step].down_staycount;
 		GPU_LOG(MALI_EXYNOS_WARNING, "Booster Governor: G3D level 2 step\n");
 	} else if ((dvfs->step > gpex_clock_get_table_idx(gpex_clock_get_max_clock())) &&
 		   (utilization > dvfs->table[dvfs->step].max_threshold)) {
 		dvfs->step--;
+		if (dvfs->table[dvfs->step].clock > gpex_clock_get_max_clock_limit())
+			dvfs->step = gpex_clock_get_table_idx(gpex_clock_get_max_clock_limit());
 		dvfs->down_requirement = dvfs->table[dvfs->step].down_staycount;
 	} else if ((dvfs->step < gpex_clock_get_table_idx(gpex_clock_get_min_clock())) &&
 		   (utilization < dvfs->table[dvfs->step].min_threshold)) {

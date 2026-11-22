@@ -2451,6 +2451,9 @@ static bool zs_compactable(struct zs_pool *pool, unsigned int pages)
 	struct size_class *class;
 	unsigned long pages_to_free = 0;
 
+	if (!pool)
+		return false;
+
 	for (i = ZS_SIZE_CLASSES - 1; i >= 0; i--) {
 		class = pool->size_class[i];
 		if (!class)
@@ -2469,6 +2472,9 @@ static bool zs_compactable(struct zs_pool *pool, unsigned int pages)
 void try_schedule_zs_compact()
 {
 	static unsigned long resume = INITIAL_JIFFIES;
+
+	if (!g_pool)
+		return;
 
 	if (time_is_before_jiffies(resume) &&
 			!work_pending(&zs_compact_work) &&
@@ -2612,6 +2618,11 @@ EXPORT_SYMBOL_GPL(zs_create_pool);
 void zs_destroy_pool(struct zs_pool *pool)
 {
 	int i;
+
+	if (g_pool == pool) {
+		g_pool = NULL;
+		cancel_work_sync(&zs_compact_work);
+	}
 
 	zs_unregister_shrinker(pool);
 	zs_unregister_migration(pool);
