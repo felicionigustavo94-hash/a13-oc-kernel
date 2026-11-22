@@ -583,9 +583,9 @@ static ssize_t show_acpm_rate(struct kobject *kobj,
 {
 	return scnprintf(buf, PAGE_SIZE,
 			 "CPUCL0=%lu CPUCL1=%lu G3D=%lu\n",
-			 cal_dfs_get_rate(ACPM_VCLK_TYPE | 2),
-			 cal_dfs_get_rate(ACPM_VCLK_TYPE | 3),
-			 cal_dfs_get_rate(ACPM_VCLK_TYPE | 4));
+			 cal_dfs_cached_get_rate(ACPM_VCLK_TYPE | 2),
+			 cal_dfs_cached_get_rate(ACPM_VCLK_TYPE | 3),
+			 cal_dfs_cached_get_rate(ACPM_VCLK_TYPE | 4));
 }
 
 static ssize_t store_acpm_rate(struct kobject *kobj,
