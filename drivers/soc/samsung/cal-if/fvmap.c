@@ -498,40 +498,57 @@ static ssize_t show_fvmap_pll(struct kobject *kobj,
 
 	size = cmucal_get_list_size(ACPM_VCLK_TYPE);
 	for (i = 0; i <= 4 && i < size; i++) {
+		unsigned char num_lv, num_mem, num_pll, init_lv;
+		unsigned short o_mem, o_rv, o_tbl;
+
 		vclk = cmucal_get_node(ACPM_VCLK_TYPE | i);
 		if (!vclk)
 			continue;
 
+		num_lv = readb((const void __iomem *)&hdr[i].num_of_lv);
+		num_mem = readb((const void __iomem *)&hdr[i].num_of_members);
+		num_pll = readb((const void __iomem *)&hdr[i].num_of_pll);
+		init_lv = readb((const void __iomem *)&hdr[i].init_lv);
+		o_mem = readw((const void __iomem *)&hdr[i].o_members);
+		o_rv = readw((const void __iomem *)&hdr[i].o_ratevolt);
+		o_tbl = readw((const void __iomem *)&hdr[i].o_tables);
+
 		len += scnprintf(buf + len, PAGE_SIZE - len,
 				 "[%d] %s lv=%u mem=%u pll=%u init=%u o_mem=0x%x o_rv=0x%x o_tbl=0x%x\n",
-				 i, vclk->name, hdr[i].num_of_lv,
-				 hdr[i].num_of_members, hdr[i].num_of_pll,
-				 hdr[i].init_lv, hdr[i].o_members,
-				 hdr[i].o_ratevolt, hdr[i].o_tables);
+				 i, vclk->name, num_lv, num_mem, num_pll,
+				 init_lv, o_mem, o_rv, o_tbl);
 
-		clks = sram_fvmap_base + hdr[i].o_members;
-		for (j = 0; j < hdr[i].num_of_pll; j++) {
-			plls = sram_fvmap_base + clks->addr[j];
+		clks = sram_fvmap_base + o_mem;
+		for (j = 0; j < num_pll; j++) {
+			unsigned short pll_off = readw((const void __iomem *)&clks->addr[j]);
+			unsigned int paddr;
+			unsigned short o_lock, pll_lv;
+
+			plls = sram_fvmap_base + pll_off;
+			paddr = readl((const void __iomem *)&plls->addr);
+			o_lock = readw((const void __iomem *)&plls->o_lock);
+			pll_lv = readw((const void __iomem *)&plls->level);
+
 			len += scnprintf(buf + len, PAGE_SIZE - len,
 					 "  pll%d addr=0x%x lock=0x%x lv=%u:",
-					 j, plls->addr, plls->o_lock, plls->level);
-			for (k = 0; k < plls->level && k < 20; k++) {
+					 j, paddr, o_lock, pll_lv);
+			for (k = 0; k < pll_lv && k < 20; k++) {
 				len += scnprintf(buf + len, PAGE_SIZE - len,
-						 " %08x", plls->pms[k]);
+						 " %08x",
+						 readl((const void __iomem *)&plls->pms[k]));
 				if (len >= PAGE_SIZE - 48)
 					break;
 			}
 			len += scnprintf(buf + len, PAGE_SIZE - len, "\n");
 		}
 
-		tbl = sram_fvmap_base + hdr[i].o_tables;
-		for (k = 0; k < hdr[i].num_of_lv &&
-		     k < (hdr[i].num_of_lv <= 12 ? 12 : 4); k++) {
+		tbl = sram_fvmap_base + o_tbl;
+		for (k = 0; k < num_lv && k < (num_lv <= 12 ? 12 : 4); k++) {
 			len += scnprintf(buf + len, PAGE_SIZE - len, "  tbl[%d]:", k);
-			for (j = 0; j < hdr[i].num_of_members; j++) {
+			for (j = 0; j < num_mem; j++) {
 				len += scnprintf(buf + len, PAGE_SIZE - len,
 						 " %02x",
-						 tbl->val[k * hdr[i].num_of_members + j]);
+						 readb((const void __iomem *)&tbl->val[k * num_mem + j]));
 			}
 			len += scnprintf(buf + len, PAGE_SIZE - len, "\n");
 			if (len >= PAGE_SIZE - 64)
@@ -656,32 +673,41 @@ static bool unlock_g3d_oc_max_sram(int i, void __iomem *sram_base,
 		{ 1300000, 1018750, 0x00c80400 }, /* 26*200/4 = 1300 MHz */
 		{ 1248000,  968750, 0x00c00400 }, /* 26*192/4 = 1248 MHz */
 	};
-	struct rate_volt orig_rv[8];
+	unsigned int orig_rate[8];
+	unsigned int orig_volt[8];
 	unsigned int orig_pms[8];
 	struct clocks *clks;
 	struct pll_header *plls;
 	struct dvfs_table *tbl;
+	unsigned short pll_lv;
 	int k;
 
+	/*
+	 * Use strict 8/16/32-bit I/O accessors on ACPM SRAM (Device-nGnRnE),
+	 * where 64-bit struct copies on 4-byte-aligned tables trigger ESR 0x96000021.
+	 */
 	if (i != 4 || fvmap_header[i].num_of_lv != 11 ||
 	    fvmap_header[i].num_of_members != 1 ||
 	    fvmap_header[i].num_of_pll < 1 ||
-	    old->table[0].rate != 1196000 || old->table[7].rate != 377000)
+	    readl((const void __iomem *)&old->table[0].rate) != 1196000 ||
+	    readl((const void __iomem *)&old->table[7].rate) != 377000)
 		return false;
 
 	clks = sram_base + fvmap_header[i].o_members;
-	plls = sram_base + clks->addr[0];
+	plls = sram_base + readw((const void __iomem *)&clks->addr[0]);
 	tbl = sram_base + fvmap_header[i].o_tables;
-	if (plls->level < 11)
+	pll_lv = readw((const void __iomem *)&plls->level);
+	if (pll_lv < 11)
 		return false;
 
 	for (k = 0; k < 8; k++) {
-		unsigned char pms_idx = tbl->val[k];
+		unsigned char pms_idx = readb((const void __iomem *)&tbl->val[k]);
 
-		if (pms_idx >= plls->level)
+		if (pms_idx >= pll_lv)
 			return false;
-		orig_rv[k] = old->table[k];
-		orig_pms[k] = plls->pms[pms_idx];
+		orig_rate[k] = readl((const void __iomem *)&old->table[k].rate);
+		orig_volt[k] = readl((const void __iomem *)&old->table[k].volt);
+		orig_pms[k] = readl((const void __iomem *)&plls->pms[pms_idx]);
 	}
 
 	if (!vclk->lut || vclk->num_rates < 11) {
@@ -709,19 +735,20 @@ static bool unlock_g3d_oc_max_sram(int i, void __iomem *sram_base,
 
 	/* Place 1352/1300/1248 MHz at lv=0..2 and shift 1196..377 MHz to lv=3..10. */
 	for (k = 0; k < 3; k++) {
-		old->table[k].rate = oc_steps[k].rate;
-		old->table[k].volt = oc_steps[k].volt;
-		plls->pms[k] = oc_steps[k].pms;
-		tbl->val[k] = k;
+		writel(oc_steps[k].rate, (void __iomem *)&old->table[k].rate);
+		writel(oc_steps[k].volt, (void __iomem *)&old->table[k].volt);
+		writel(oc_steps[k].pms, (void __iomem *)&plls->pms[k]);
+		writeb(k, (void __iomem *)&tbl->val[k]);
 	}
 	for (k = 0; k < 8; k++) {
-		old->table[k + 3] = orig_rv[k];
-		plls->pms[k + 3] = orig_pms[k];
-		tbl->val[k + 3] = k + 3;
+		writel(orig_rate[k], (void __iomem *)&old->table[k + 3].rate);
+		writel(orig_volt[k], (void __iomem *)&old->table[k + 3].volt);
+		writel(orig_pms[k], (void __iomem *)&plls->pms[k + 3]);
+		writeb(k + 3, (void __iomem *)&tbl->val[k + 3]);
 	}
 
 	for (k = 0; k < 11; k++) {
-		vclk->lut[k].rate = old->table[k].rate;
+		vclk->lut[k].rate = (k < 3) ? oc_steps[k].rate : orig_rate[k - 3];
 		if (vclk->lut[k].params)
 			vclk->lut[k].params[0] = k;
 	}
@@ -729,9 +756,11 @@ static bool unlock_g3d_oc_max_sram(int i, void __iomem *sram_base,
 	if (vclk->max_freq < 1352000)
 		vclk->max_freq = 1352000;
 
-	if (header[i].init_lv < 8) {
-		header[i].init_lv += 3;
-		fvmap_header[i].init_lv = header[i].init_lv;
+	if (fvmap_header[i].init_lv < 8) {
+		unsigned char new_init = fvmap_header[i].init_lv + 3;
+
+		writeb(new_init, (void __iomem *)&header[i].init_lv);
+		fvmap_header[i].init_lv = new_init;
 	}
 
 	return true;
@@ -764,12 +793,13 @@ static void sync_g3d_pll_rate_table(int i, void __iomem *sram_base,
 		return;
 
 	clks = sram_base + fvmap_header[i].o_members;
-	plls = sram_base + clks->addr[0];
+	plls = sram_base + readw((const void __iomem *)&clks->addr[0]);
 
 	for (k = 0; k < 11; k++) {
-		unsigned int pms = plls->pms[k];
+		unsigned int pms = readl((const void __iomem *)&plls->pms[k]);
+		unsigned int rate_khz = readl((const void __iomem *)&old->table[k].rate);
 
-		ptbl[k].rate = (unsigned long)old->table[k].rate * 1000UL;
+		ptbl[k].rate = (unsigned long)rate_khz * 1000UL;
 		ptbl[k].mdiv = (pms >> 16) & 0x3ff;
 		ptbl[k].pdiv = (pms >> 8) & 0x3f;
 		ptbl[k].sdiv = pms & 0x7;
