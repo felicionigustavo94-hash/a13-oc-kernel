@@ -40,6 +40,9 @@ MAKE_ARGS=(
   STRIP=llvm-strip
 )
 
+mkdir -p drivers/kernelsu
+: > drivers/kernelsu/Kconfig
+: > drivers/kernelsu/Makefile
 make "${MAKE_ARGS[@]}" physwizz_defconfig
 sed -i '/CONFIG_KSU/d' .config
 make "${MAKE_ARGS[@]}" -j"$(nproc)" Image dtbs
