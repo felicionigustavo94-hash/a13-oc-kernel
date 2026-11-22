@@ -676,9 +676,9 @@ static bool unlock_g3d_oc_max_sram(int i, void __iomem *sram_base,
 		unsigned int volt;
 		unsigned int pms;
 	} oc_steps[] = {
-		{ 1404000, 1200000, 0x00d80400 }, /* 26*216/4 = 1404 MHz @ 1.2000 V (BUCK2 max) */
-		{ 1352000, 1137500, 0x00d00400 }, /* 26*208/4 = 1352 MHz @ 1.1375 V */
-		{ 1248000, 1025000, 0x00c00400 }, /* 26*192/4 = 1248 MHz @ 1.0250 V */
+		{ 1404000, 1137500, 0x00d80400 }, /* 26*216/4 = 1404 MHz @ 1.1375 V */
+		{ 1352000, 1081250, 0x00d00400 }, /* 26*208/4 = 1352 MHz @ 1.08125 V */
+		{ 1248000,  968750, 0x00c00400 }, /* 26*192/4 = 1248 MHz @ 0.96875 V */
 	};
 	unsigned int orig_rate[8];
 	unsigned int orig_volt[8];
@@ -815,7 +815,7 @@ static void sync_g3d_pll_rate_table(int i, void __iomem *sram_base,
 
 	g3d_pll->rate_table = ptbl;
 	g3d_pll->rate_count = 11;
-	pr_info("A13-TQD: G3D unlocked to 1404000 kHz @ 1200000 uV\n");
+	pr_info("A13-TQD: G3D unlocked to 1404000 kHz @ 1137500 uV\n");
 }
 
 static void fvmap_copy_from_sram(void __iomem *map_base, void __iomem *sram_base)
@@ -866,16 +866,6 @@ static void fvmap_copy_from_sram(void __iomem *map_base, void __iomem *sram_base
 
 		old = sram_base + fvmap_header[i].o_ratevolt;
 		new = map_base + fvmap_header[i].o_ratevolt;
-
-		/*
-		 * Raise INT 667 MHz voltage from 762.5 mV to 812.5 mV to stabilize
-		 * G3D/SysMMU bus under 1404 MHz GPU load.
-		 */
-		if (i == 1 && fvmap_header[i].num_of_lv >= 1 &&
-		    readl((const void __iomem *)&old->table[0].rate) == 667000 &&
-		    readl((const void __iomem *)&old->table[0].volt) < 812500) {
-			writel(812500, (void __iomem *)&old->table[0].volt);
-		}
 
 		/*
 		 * Clean asymmetric OC-Max for Exynos 850 (SM-A135M/F):
