@@ -112,10 +112,10 @@ static int build_clk_table(void)
 	int array_size = dt_rows * dt_info.gpu_dvfs_table_size.col;
 	u32 *raw_table;
 	int row = 0;
-	static const u32 oc_freqs[] = { 1196000, 1105000 };
-	static const u32 oc_min_th[] = { 78, 68 };
-	static const u32 oc_max_th[] = { 100, 84 };
-	static const u32 oc_stay[] = { 3, 2 };
+	static const u32 oc_freqs[] = { 1352000, 1300000, 1248000, 1196000, 1105000 };
+	static const u32 oc_min_th[] = { 84, 80, 76, 70, 64 };
+	static const u32 oc_max_th[] = { 100, 92, 88, 84, 78 };
+	static const u32 oc_stay[] = { 3, 2, 2, 2, 2 };
 	int oc_count = 0;
 	int oc_idx;
 	int max_dt_clk = 0;
@@ -167,8 +167,8 @@ static int build_clk_table(void)
 
 		/* Stock ceiling row has max_threshold=100, which blocks > comparison to OC rows. */
 		if (oc_count > 0 && raw_table[table_idx] == (u32)max_dt_clk) {
-			min_th = min_t(u32, min_th, 58U);
-			max_th = min_t(u32, max_th, 76U);
+			min_th = min_t(u32, min_th, 56U);
+			max_th = min_t(u32, max_th, 72U);
 			stay = max_t(u32, stay, 2U);
 		} else if (oc_count > 0 && max_th > 80U) {
 			max_th = 80U;
@@ -199,8 +199,8 @@ static int build_clk_table(void)
 	}
 
 	dt_info.gpu_dvfs_table_size.row = row;
-	if (dt_info.gpu_max_clock < 1196000)
-		dt_info.gpu_max_clock = 1196000;
+	if (dt_info.gpu_max_clock < 1352000)
+		dt_info.gpu_max_clock = 1352000;
 
 	kfree(raw_table);
 

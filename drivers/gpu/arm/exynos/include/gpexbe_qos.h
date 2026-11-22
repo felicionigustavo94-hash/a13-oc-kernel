@@ -30,6 +30,7 @@ typedef enum {
 	PMQOS_MIDDLE = 1 << 3,
 	PMQOS_BIG = 1 << 4,
 	PMQOS_MIF = 1 << 5,
+	PMQOS_INT = 1 << 6,
 } mali_pmqos_flags;
 
 /**

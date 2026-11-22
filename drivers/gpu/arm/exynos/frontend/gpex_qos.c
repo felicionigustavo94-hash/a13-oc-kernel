@@ -167,8 +167,8 @@ int gpex_qos_init()
 		gpexbe_devicetree_get_int(gpu_heavy_compute_vk_cpu0_min_clock);
 
 	/* Request to set QOS of other IPs */
-	gpexbe_qos_request_add(PMQOS_MIF | PMQOS_LITTLE | PMQOS_MIDDLE | PMQOS_BIG | PMQOS_MIN |
-			       PMQOS_MAX);
+	gpexbe_qos_request_add(PMQOS_MIF | PMQOS_INT | PMQOS_LITTLE | PMQOS_MIDDLE | PMQOS_BIG |
+			       PMQOS_MIN | PMQOS_MAX);
 
 	qos_info.is_pm_qos_init = true;
 
@@ -181,8 +181,8 @@ int gpex_qos_init()
 
 void gpex_qos_term()
 {
-	gpexbe_qos_request_remove(PMQOS_MIF | PMQOS_LITTLE | PMQOS_MIDDLE | PMQOS_BIG | PMQOS_MIN |
-				  PMQOS_MAX);
+	gpexbe_qos_request_remove(PMQOS_MIF | PMQOS_INT | PMQOS_LITTLE | PMQOS_MIDDLE |
+				  PMQOS_BIG | PMQOS_MIN | PMQOS_MAX);
 	kfree(qos_table);
 	kfree(clqos_table);
 	qos_info.is_pm_qos_init = false;
@@ -236,9 +236,10 @@ int gpex_qos_set_bts_mo(int clock)
 int gpex_qos_set_from_clock(int gpu_clock)
 {
 	int idx = 0;
+	int int_min;
 
 	if (gpu_clock == 0) {
-		gpex_qos_unset(QOS_MIF | QOS_LITTLE | QOS_MIDDLE | QOS_MIN);
+		gpex_qos_unset(QOS_MIF | QOS_INT | QOS_LITTLE | QOS_MIDDLE | QOS_MIN);
 		gpex_qos_set_bts_mo(gpu_clock);
 		gpexbe_llc_coherency_set_ways(0);
 
@@ -252,8 +253,12 @@ int gpex_qos_set_from_clock(int gpu_clock)
 		return -EINVAL;
 	}
 
+	/* Keep INT (G3D/CCI bus) at 667 MHz under heavy GPU load (same 762.5 mV as 534 MHz). */
+	int_min = (gpu_clock >= 865000) ? 667000 : 0;
+
 	if (gpex_clboost_check_activation_condition()) {
 		gpex_qos_set(QOS_MIF | QOS_MIN, clqos_table[idx].mif_min);
+		gpex_qos_set(QOS_INT | QOS_MIN, int_min);
 		gpex_qos_set(QOS_LITTLE | QOS_MIN, clqos_table[idx].little_min);
 		gpex_qos_set(QOS_MIDDLE | QOS_MIN, clqos_table[idx].middle_min);
 		gpex_qos_set(QOS_BIG | QOS_MAX, INT_MAX);
@@ -262,11 +267,13 @@ int gpex_qos_set_from_clock(int gpu_clock)
 	} else {
 		if (gpex_tsg_get_pmqos() == true) {
 			gpex_qos_set(QOS_MIF | QOS_MIN, 0);
+			gpex_qos_set(QOS_INT | QOS_MIN, 0);
 			gpex_qos_set(QOS_LITTLE | QOS_MIN, 0);
 			gpex_qos_set(QOS_MIDDLE | QOS_MIN, 0);
 			gpex_qos_set(QOS_BIG | QOS_MAX, INT_MAX);
 		} else {
 			gpex_qos_set(QOS_MIF | QOS_MIN, qos_table[idx].mem_freq);
+			gpex_qos_set(QOS_INT | QOS_MIN, int_min);
 
 			if (!(gpex_gts_get_hcm_mode() & (HCM_MODE_A | HCM_MODE_C))) {
 				gpex_qos_set(QOS_LITTLE | QOS_MIN,

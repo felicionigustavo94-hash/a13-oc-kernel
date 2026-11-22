@@ -497,16 +497,17 @@ static ssize_t show_fvmap_pll(struct kobject *kobj,
 		return -ENODEV;
 
 	size = cmucal_get_list_size(ACPM_VCLK_TYPE);
-	for (i = 2; i <= 4 && i < size; i++) {
+	for (i = 0; i <= 4 && i < size; i++) {
 		vclk = cmucal_get_node(ACPM_VCLK_TYPE | i);
 		if (!vclk)
 			continue;
 
 		len += scnprintf(buf + len, PAGE_SIZE - len,
-				 "[%d] %s lv=%u mem=%u pll=%u o_mem=0x%x o_rv=0x%x o_tbl=0x%x\n",
+				 "[%d] %s lv=%u mem=%u pll=%u init=%u o_mem=0x%x o_rv=0x%x o_tbl=0x%x\n",
 				 i, vclk->name, hdr[i].num_of_lv,
 				 hdr[i].num_of_members, hdr[i].num_of_pll,
-				 hdr[i].o_members, hdr[i].o_ratevolt, hdr[i].o_tables);
+				 hdr[i].init_lv, hdr[i].o_members,
+				 hdr[i].o_ratevolt, hdr[i].o_tables);
 
 		clks = sram_fvmap_base + hdr[i].o_members;
 		for (j = 0; j < hdr[i].num_of_pll; j++) {
@@ -524,7 +525,8 @@ static ssize_t show_fvmap_pll(struct kobject *kobj,
 		}
 
 		tbl = sram_fvmap_base + hdr[i].o_tables;
-		for (k = 0; k < hdr[i].num_of_lv && k < 4; k++) {
+		for (k = 0; k < hdr[i].num_of_lv &&
+		     k < (hdr[i].num_of_lv <= 12 ? 12 : 4); k++) {
 			len += scnprintf(buf + len, PAGE_SIZE - len, "  tbl[%d]:", k);
 			for (j = 0; j < hdr[i].num_of_members; j++) {
 				len += scnprintf(buf + len, PAGE_SIZE - len,
@@ -639,6 +641,146 @@ static const struct attribute_group percent_margin_group = {
 	.attrs = percent_margin_attrs,
 };
 
+static bool unlock_g3d_oc_max_sram(int i, void __iomem *sram_base,
+				   struct fvmap_header *fvmap_header,
+				   struct fvmap_header *header,
+				   struct rate_volt_header *old,
+				   struct vclk *vclk)
+{
+	static const struct {
+		unsigned int rate;
+		unsigned int volt;
+		unsigned int pms;
+	} oc_steps[] = {
+		{ 1352000, 1081250, 0x00d00400 }, /* 26*208/4 = 1352 MHz */
+		{ 1300000, 1018750, 0x00c80400 }, /* 26*200/4 = 1300 MHz */
+		{ 1248000,  968750, 0x00c00400 }, /* 26*192/4 = 1248 MHz */
+	};
+	struct rate_volt orig_rv[8];
+	unsigned int orig_pms[8];
+	struct clocks *clks;
+	struct pll_header *plls;
+	struct dvfs_table *tbl;
+	int k;
+
+	if (i != 4 || fvmap_header[i].num_of_lv != 11 ||
+	    fvmap_header[i].num_of_members != 1 ||
+	    fvmap_header[i].num_of_pll < 1 ||
+	    old->table[0].rate != 1196000 || old->table[7].rate != 377000)
+		return false;
+
+	clks = sram_base + fvmap_header[i].o_members;
+	plls = sram_base + clks->addr[0];
+	tbl = sram_base + fvmap_header[i].o_tables;
+	if (plls->level < 11)
+		return false;
+
+	for (k = 0; k < 8; k++) {
+		unsigned char pms_idx = tbl->val[k];
+
+		if (pms_idx >= plls->level)
+			return false;
+		orig_rv[k] = old->table[k];
+		orig_pms[k] = plls->pms[pms_idx];
+	}
+
+	if (!vclk->lut || vclk->num_rates < 11) {
+		struct vclk_lut *new_lut;
+		int *new_params;
+		unsigned int num_list = vclk->num_list ? vclk->num_list : 1;
+
+		new_lut = kcalloc(11, sizeof(*new_lut), GFP_KERNEL);
+		if (!new_lut)
+			return false;
+		for (k = 0; k < 11; k++) {
+			new_params = kcalloc(num_list, sizeof(*new_params),
+					     GFP_KERNEL);
+			if (!new_params) {
+				while (--k >= 0)
+					kfree(new_lut[k].params);
+				kfree(new_lut);
+				return false;
+			}
+			new_lut[k].params = new_params;
+		}
+		vclk->lut = new_lut;
+		vclk->num_rates = 11;
+	}
+
+	/* Place 1352/1300/1248 MHz at lv=0..2 and shift 1196..377 MHz to lv=3..10. */
+	for (k = 0; k < 3; k++) {
+		old->table[k].rate = oc_steps[k].rate;
+		old->table[k].volt = oc_steps[k].volt;
+		plls->pms[k] = oc_steps[k].pms;
+		tbl->val[k] = k;
+	}
+	for (k = 0; k < 8; k++) {
+		old->table[k + 3] = orig_rv[k];
+		plls->pms[k + 3] = orig_pms[k];
+		tbl->val[k + 3] = k + 3;
+	}
+
+	for (k = 0; k < 11; k++) {
+		vclk->lut[k].rate = old->table[k].rate;
+		if (vclk->lut[k].params)
+			vclk->lut[k].params[0] = k;
+	}
+	vclk->num_rates = 11;
+	if (vclk->max_freq < 1352000)
+		vclk->max_freq = 1352000;
+
+	if (header[i].init_lv < 8) {
+		header[i].init_lv += 3;
+		fvmap_header[i].init_lv = header[i].init_lv;
+	}
+
+	return true;
+}
+
+static void sync_g3d_pll_rate_table(int i, void __iomem *sram_base,
+				    struct fvmap_header *fvmap_header,
+				    struct rate_volt_header *old,
+				    struct vclk *vclk)
+{
+	struct clocks *clks;
+	struct pll_header *plls;
+	struct cmucal_clk *pll_clk;
+	struct cmucal_pll *g3d_pll;
+	struct cmucal_pll_table *ptbl;
+	int k;
+
+	if (!vclk->list || vclk->num_list < 1 ||
+	    vclk->list[0] == INVALID_CLK_ID ||
+	    GET_TYPE(vclk->list[0]) != PLL_TYPE)
+		return;
+
+	pll_clk = cmucal_get_node(vclk->list[0]);
+	if (!pll_clk)
+		return;
+	g3d_pll = to_pll_clk(pll_clk);
+
+	ptbl = kcalloc(11, sizeof(*ptbl), GFP_KERNEL);
+	if (!ptbl)
+		return;
+
+	clks = sram_base + fvmap_header[i].o_members;
+	plls = sram_base + clks->addr[0];
+
+	for (k = 0; k < 11; k++) {
+		unsigned int pms = plls->pms[k];
+
+		ptbl[k].rate = (unsigned long)old->table[k].rate * 1000UL;
+		ptbl[k].mdiv = (pms >> 16) & 0x3ff;
+		ptbl[k].pdiv = (pms >> 8) & 0x3f;
+		ptbl[k].sdiv = pms & 0x7;
+		ptbl[k].kdiv = 0;
+	}
+
+	g3d_pll->rate_table = ptbl;
+	g3d_pll->rate_count = 11;
+	pr_info("OC-Max: G3D unlocked to 1352000 kHz @ 1081250 uV\n");
+}
+
 static void fvmap_copy_from_sram(void __iomem *map_base, void __iomem *sram_base)
 {
 	struct fvmap_header *fvmap_header, *header;
@@ -650,6 +792,7 @@ static void fvmap_copy_from_sram(void __iomem *map_base, void __iomem *sram_base
 	unsigned int blk_idx;
 	int size, margin;
 	int i, j;
+	bool g3d_unlocked;
 
 	fvmap_header = map_base;
 	header = sram_base;
@@ -713,6 +856,10 @@ static void fvmap_copy_from_sram(void __iomem *map_base, void __iomem *sram_base
 			pr_info("OC-Max: CPUCL1 unlocked to 2314000 kHz @ 1318750 uV\n");
 		}
 
+		g3d_unlocked = unlock_g3d_oc_max_sram(i, sram_base,
+						       fvmap_header, header,
+						       old, vclk);
+
 		check_percent_margin(old, fvmap_header[i].num_of_lv);
 
 		margin = init_margin_table[vclk->margin_id];
@@ -741,6 +888,10 @@ static void fvmap_copy_from_sram(void __iomem *map_base, void __iomem *sram_base
 			else
 				pr_info("  DVFS CMU addr:0x%x\n", member_addr);
 		}
+
+		if (g3d_unlocked)
+			sync_g3d_pll_rate_table(i, sram_base, fvmap_header,
+						old, vclk);
 
 		for (j = 0; j < fvmap_header[i].num_of_lv; j++) {
 			new->table[j].rate = old->table[j].rate;

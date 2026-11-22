@@ -24,6 +24,7 @@
 #include "gpexbe_qos_internal.h"
 
 static struct pm_qos_request exynos5_g3d_mif_min_qos;
+static struct pm_qos_request exynos5_g3d_int_min_qos;
 static struct pm_qos_request exynos5_g3d_cpu_cluster0_min_qos;
 static struct pm_qos_request exynos5_g3d_cpu_cluster1_min_qos;
 
@@ -31,6 +32,9 @@ void gpexbe_qos_request_add(mali_pmqos_flags type)
 {
 	if (pmqos_flag_check(type, PMQOS_MIF | PMQOS_MIN))
 		pm_qos_add_request(&exynos5_g3d_mif_min_qos, PM_QOS_BUS_THROUGHPUT, 0);
+
+	if (pmqos_flag_check(type, PMQOS_INT | PMQOS_MIN))
+		pm_qos_add_request(&exynos5_g3d_int_min_qos, PM_QOS_DEVICE_THROUGHPUT, 0);
 
 	if (pmqos_flag_check(type, PMQOS_LITTLE | PMQOS_MIN))
 		pm_qos_add_request(&exynos5_g3d_cpu_cluster0_min_qos, PM_QOS_CLUSTER0_FREQ_MIN, 0);
@@ -44,6 +48,9 @@ void gpexbe_qos_request_remove(mali_pmqos_flags type)
 	if (pmqos_flag_check(type, PMQOS_MIF | PMQOS_MIN))
 		pm_qos_remove_request(&exynos5_g3d_mif_min_qos);
 
+	if (pmqos_flag_check(type, PMQOS_INT | PMQOS_MIN))
+		pm_qos_remove_request(&exynos5_g3d_int_min_qos);
+
 	if (pmqos_flag_check(type, PMQOS_LITTLE | PMQOS_MIN))
 		pm_qos_remove_request(&exynos5_g3d_cpu_cluster0_min_qos);
 
@@ -56,6 +63,9 @@ void gpexbe_qos_request_update(mali_pmqos_flags type, s32 clock)
 	if (pmqos_flag_check(type, PMQOS_MIF | PMQOS_MIN))
 		pm_qos_update_request(&exynos5_g3d_mif_min_qos, clock);
 
+	if (pmqos_flag_check(type, PMQOS_INT | PMQOS_MIN))
+		pm_qos_update_request(&exynos5_g3d_int_min_qos, clock);
+
 	if (pmqos_flag_check(type, PMQOS_LITTLE | PMQOS_MIN))
 		pm_qos_update_request(&exynos5_g3d_cpu_cluster0_min_qos, clock);
 
@@ -67,6 +77,9 @@ void gpexbe_qos_request_unset(mali_pmqos_flags type)
 {
 	if (pmqos_flag_check(type, PMQOS_MIF | PMQOS_MIN))
 		pm_qos_update_request(&exynos5_g3d_mif_min_qos, 0);
+
+	if (pmqos_flag_check(type, PMQOS_INT | PMQOS_MIN))
+		pm_qos_update_request(&exynos5_g3d_int_min_qos, 0);
 
 	if (pmqos_flag_check(type, PMQOS_LITTLE | PMQOS_MIN))
 		pm_qos_update_request(&exynos5_g3d_cpu_cluster0_min_qos, 0);
