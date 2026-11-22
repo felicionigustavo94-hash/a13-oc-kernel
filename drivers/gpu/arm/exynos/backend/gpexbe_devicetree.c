@@ -112,7 +112,7 @@ static int build_clk_table(void)
 	int array_size = dt_rows * dt_info.gpu_dvfs_table_size.col;
 	u32 *raw_table;
 	int row = 0;
-	static const u32 oc_freqs[] = { 1404000, 1352000, 1248000, 1196000, 1105000 };
+	static const u32 oc_freqs[] = { 1352000, 1300000, 1248000, 1196000, 1105000 };
 	static const u32 oc_min_th[] = { 84, 80, 76, 70, 64 };
 	static const u32 oc_max_th[] = { 100, 92, 88, 84, 78 };
 	static const u32 oc_stay[] = { 3, 2, 2, 2, 2 };
@@ -199,8 +199,8 @@ static int build_clk_table(void)
 	}
 
 	dt_info.gpu_dvfs_table_size.row = row;
-	if (dt_info.gpu_max_clock < 1404000)
-		dt_info.gpu_max_clock = 1404000;
+	if (dt_info.gpu_max_clock < 1352000)
+		dt_info.gpu_max_clock = 1352000;
 
 	kfree(raw_table);
 
