@@ -1621,12 +1621,13 @@ static int exynos_tmu_parse_ect(struct exynos_tmu_data *data)
 			freq = function->range_list[i].max_frequency;
 			if (i == 0 && temperature <= 25) {
 				freq = 0;
-			} else if (temperature > 25 && temperature < 105) {
-				int delta = (110 - temperature) / 3;
+			} else if (temperature > 25 && temperature < 108) {
+				int delta = (115 - temperature) / 2;
+				int target_temp = temperature + delta;
 
-				if (delta < 4)
-					delta = 4;
-				temperature = min(temperature + delta, 105);
+				if (i == 1 && target_temp < 96)
+					target_temp = 96;
+				temperature = min(target_temp, 108);
 			}
 			__tz->trips[i].temperature = temperature  * MCELSIUS;
 			__tz->tbps[i].value = freq;

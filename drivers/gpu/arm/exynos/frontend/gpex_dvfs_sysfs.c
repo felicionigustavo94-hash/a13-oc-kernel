@@ -520,7 +520,7 @@ static ssize_t set_kernel_sysfs_governor(const char *buf, size_t count)
 
 	for (i = 0; i < G3D_MAX_GOVERNOR_NUM; i++) {
 		governor_name_size = strlen(governor_info[i].name);
-		if (!strncmp(buf, governor_info[i].name, governor_name_size)) {
+		if (!strncasecmp(buf, governor_info[i].name, governor_name_size)) {
 			next_governor_type = i;
 			break;
 		}

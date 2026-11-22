@@ -44,5 +44,6 @@ jobs:
           name: physwizz-A135-OC-Max
           path: |
             out/physwizz-A135-OC-Max.zip
+            out/Image
             out/exynos3830.dtb
             out/build.log

@@ -4,7 +4,7 @@
 ## AnyKernel setup
 # begin properties
 properties() { '
-kernel.string=physwizz-A135-OC-Max (CPU+GPU+Volt)
+kernel.string=A13-TQD (CPU+GPU+EMS+IO)
 do.devicecheck=0
 do.modules=0
 do.cleanup=1

@@ -218,7 +218,8 @@ static unsigned int apply_pm_qos(struct exynos_cpufreq_domain *domain,
 	if (qos_min < 0 || qos_max < 0)
 		return target_freq;
 
-	freq = max((unsigned int)qos_min, target_freq);
+	freq = clamp(max((unsigned int)qos_min, target_freq),
+		     policy->min, policy->max);
 	freq = min((unsigned int)qos_max, freq);
 
 	return freq;
@@ -1176,14 +1177,14 @@ static __init void set_boot_qos(struct exynos_cpufreq_domain *domain)
 	 * booting pm_qos is selected to smaller one
 	 * between max frequency of domain and the value defined in device tree.
 	 */
-	boot_qos = min(domain->max_freq, (unsigned int)2210000);
+	boot_qos = min(domain->max_freq, (unsigned int)2314000);
 	if (!of_property_read_u32(dn, "pm_qos-booting", &val))
 		boot_qos = min(boot_qos, val);
 
 	pm_qos_update_request_timeout(&domain->min_qos_req,
-			boot_qos, 40 * USEC_PER_SEC);
+			boot_qos, 15 * USEC_PER_SEC);
 	pm_qos_update_request_timeout(&domain->max_qos_req,
-			boot_qos, 40 * USEC_PER_SEC);
+			boot_qos, 15 * USEC_PER_SEC);
 
 }
 

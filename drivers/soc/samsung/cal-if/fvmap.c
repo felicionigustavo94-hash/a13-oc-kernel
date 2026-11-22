@@ -469,12 +469,13 @@ static ssize_t store_fvmap_table(struct kobject *kobj,
 	volt_uv = roundup(volt_uv, STEP_UV);
 
 	fv_table = fvmap_base + fvmap_header[dom_idx].o_ratevolt;
-	sram_table = sram_fvmap_base + sram_header[dom_idx].o_ratevolt;
+	sram_table = sram_fvmap_base +
+		     readw((const void __iomem *)&sram_header[dom_idx].o_ratevolt);
 
 	fv_table->table[lv].rate = rate_khz;
 	fv_table->table[lv].volt = volt_uv;
-	sram_table->table[lv].rate = rate_khz;
-	sram_table->table[lv].volt = volt_uv;
+	writel(rate_khz, (void __iomem *)&sram_table->table[lv].rate);
+	writel(volt_uv, (void __iomem *)&sram_table->table[lv].volt);
 
 	return count;
 }
@@ -584,13 +585,15 @@ static ssize_t store_fvmap_pll(struct kobject *kobj,
 	if (pll_idx < 0 || pll_idx >= hdr[dom_idx].num_of_pll)
 		return -EINVAL;
 
-	clks = sram_fvmap_base + hdr[dom_idx].o_members;
-	plls = sram_fvmap_base + clks->addr[pll_idx];
+	clks = sram_fvmap_base +
+	       readw((const void __iomem *)&hdr[dom_idx].o_members);
+	plls = sram_fvmap_base +
+	       readw((const void __iomem *)&clks->addr[pll_idx]);
 
-	if (lv < 0 || lv >= plls->level)
+	if (lv < 0 || lv >= readw((const void __iomem *)&plls->level))
 		return -EINVAL;
 
-	plls->pms[lv] = pms_val;
+	writel(pms_val, (void __iomem *)&plls->pms[lv]);
 	return count;
 }
 
@@ -620,6 +623,10 @@ static ssize_t store_acpm_rate(struct kobject *kobj,
 
 	if (dom_idx > 8 || rate_khz < 50000 || rate_khz > 2500000)
 		return -EINVAL;
+
+	/* Never issue ACPM G3D rate IPC while pd-g3d is power-gated. */
+	if (dom_idx == 4 && cal_pd_status(0xB1380005) <= 0)
+		return -EAGAIN;
 
 	ret = exynos_acpm_set_rate(dom_idx, rate_khz);
 	if (ret)
@@ -669,8 +676,8 @@ static bool unlock_g3d_oc_max_sram(int i, void __iomem *sram_base,
 		unsigned int volt;
 		unsigned int pms;
 	} oc_steps[] = {
+		{ 1404000, 1162500, 0x00d80400 }, /* 26*216/4 = 1404 MHz */
 		{ 1352000, 1081250, 0x00d00400 }, /* 26*208/4 = 1352 MHz */
-		{ 1300000, 1018750, 0x00c80400 }, /* 26*200/4 = 1300 MHz */
 		{ 1248000,  968750, 0x00c00400 }, /* 26*192/4 = 1248 MHz */
 	};
 	unsigned int orig_rate[8];
@@ -753,8 +760,8 @@ static bool unlock_g3d_oc_max_sram(int i, void __iomem *sram_base,
 			vclk->lut[k].params[0] = k;
 	}
 	vclk->num_rates = 11;
-	if (vclk->max_freq < 1352000)
-		vclk->max_freq = 1352000;
+	if (vclk->max_freq < 1404000)
+		vclk->max_freq = 1404000;
 
 	if (fvmap_header[i].init_lv < 8) {
 		unsigned char new_init = fvmap_header[i].init_lv + 3;
@@ -808,7 +815,7 @@ static void sync_g3d_pll_rate_table(int i, void __iomem *sram_base,
 
 	g3d_pll->rate_table = ptbl;
 	g3d_pll->rate_count = 11;
-	pr_info("OC-Max: G3D unlocked to 1352000 kHz @ 1081250 uV\n");
+	pr_info("A13-TQD: G3D unlocked to 1404000 kHz @ 1162500 uV\n");
 }
 
 static void fvmap_copy_from_sram(void __iomem *map_base, void __iomem *sram_base)
@@ -868,22 +875,39 @@ static void fvmap_copy_from_sram(void __iomem *map_base, void __iomem *sram_base
 		 */
 		if (i == 3 && fvmap_header[i].num_of_lv >= 3 &&
 		    fvmap_header[i].num_of_pll >= 1 &&
-		    old->table[0].rate == 2210000) {
+		    readl((const void __iomem *)&old->table[0].rate) == 2210000) {
+			unsigned int base_volt =
+				readl((const void __iomem *)&old->table[0].volt);
+
 			clks = sram_base + fvmap_header[i].o_members;
-			plls = sram_base + clks->addr[0];
-			if (plls->level >= 2) {
-				plls->pms[1] = plls->pms[0];
-				plls->pms[0] = 0x010b0300; /* 26*267/3 = 2314 MHz */
+			plls = sram_base +
+			       readw((const void __iomem *)&clks->addr[0]);
+			if (readw((const void __iomem *)&plls->level) >= 3) {
+				unsigned int base_pms =
+					readl((const void __iomem *)&plls->pms[0]);
+
+				writel(0x01140300,
+				       (void __iomem *)&plls->pms[0]); /* 26*276/3 = 2392 MHz */
+				writel(0x010b0300,
+				       (void __iomem *)&plls->pms[1]); /* 26*267/3 = 2314 MHz */
+				writel(base_pms,
+				       (void __iomem *)&plls->pms[2]); /* 2210 MHz */
 			}
-			old->table[1].rate = old->table[0].rate;
-			old->table[1].volt = old->table[0].volt;
-			old->table[0].rate = 2314000;
-			old->table[0].volt = 1318750;
-			if (vclk->lut && vclk->num_rates >= 2) {
-				vclk->lut[1].rate = vclk->lut[0].rate;
-				vclk->lut[0].rate = 2314000;
+			writel(2392000, (void __iomem *)&old->table[0].rate);
+			writel(1300000, (void __iomem *)&old->table[0].volt);
+			writel(2314000, (void __iomem *)&old->table[1].rate);
+			writel(1300000, (void __iomem *)&old->table[1].volt);
+			writel(2210000, (void __iomem *)&old->table[2].rate);
+			writel(base_volt ? base_volt : 1268750,
+			       (void __iomem *)&old->table[2].volt);
+			if (vclk->lut && vclk->num_rates >= 3) {
+				vclk->lut[2].rate = vclk->lut[0].rate;
+				vclk->lut[1].rate = 2314000;
+				vclk->lut[0].rate = 2392000;
 			}
-			pr_info("OC-Max: CPUCL1 unlocked to 2314000 kHz @ 1318750 uV\n");
+			if (vclk->max_freq < 2392000)
+				vclk->max_freq = 2392000;
+			pr_info("A13-TQD: CPUCL1 unlocked to 2392000/2314000 kHz @ 1300000 uV\n");
 		}
 
 		g3d_unlocked = unlock_g3d_oc_max_sram(i, sram_base,

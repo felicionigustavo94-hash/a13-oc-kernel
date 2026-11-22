@@ -958,7 +958,7 @@ static int init_ufc_domain(struct device_node *dn)
 		return -EINVAL;
 
 	ufc_dom->min_freq = policy->min;
-	ufc_dom->max_freq = policy->max;
+	ufc_dom->max_freq = policy->cpuinfo.max_freq;
 
 	if (ufc.fill_flag == NOT_FILL)
 		return 0;

@@ -1253,6 +1253,9 @@ static int cpufreq_online(unsigned int cpu)
 	cpumask_and(policy->cpus, policy->cpus, cpu_online_mask);
 
 	if (new_policy) {
+		/* Keep initial CPUCL1 boot ceiling at 2.314 GHz; 2.392 GHz stays unlockable via sysfs. */
+		if (policy->cpu >= 4 && policy->max > 2314000)
+			policy->max = 2314000;
 		policy->user_policy.min = policy->min;
 		policy->user_policy.max = policy->max;
 
